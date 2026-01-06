@@ -76,10 +76,9 @@ class FullScreenMonitorApp:
         self.btn_toggle.bind("<Button-1>", lambda e: self.toggle_session())
 
     def send_to_server(self, is_distracted, reason, session_id, frame=None):
-        """ Gửi dữ liệu trong luồng riêng để tránh làm lag UI """
-        def _request_task():
+        def _bg_send():
             data = {
-                "code": self.my_code,
+                "code": self.my_code, # QUAN TRỌNG: Định danh thiết bị
                 "is_distracted": str(is_distracted),
                 "reason": reason,
                 "session_id": str(session_id),
@@ -87,17 +86,14 @@ class FullScreenMonitorApp:
             }
             files = {}
             if frame is not None:
-                # Encode ảnh trực tiếp từ bộ nhớ
-                success, img_encoded = cv2.imencode('.jpg', frame)
-                if success:
-                    files = {'image': ('proof.jpg', img_encoded.tobytes(), 'image/jpeg')}
+                _, img_encoded = cv2.imencode('.jpg', frame)
+                files = {'image': ('proof.jpg', img_encoded.tobytes(), 'image/jpeg')}
             
             try:
+                # Gửi đến API chung, server sẽ tự phân loại dựa vào 'code' trong data
                 requests.post(f"{SERVER_URL}/update_status", data=data, files=files, timeout=1)
-            except:
-                pass
-
-        threading.Thread(target=_request_task, daemon=True).start()
+            except: pass
+        threading.Thread(target=_bg_send, daemon=True).start().start()
 
     def toggle_session(self):
         if not self.running:

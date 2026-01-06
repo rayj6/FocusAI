@@ -1,53 +1,51 @@
-from flask import Flask, jsonify, request, send_file
-from flask_cors import CORS
-import os, logging, io
+# app.py (Server)
+from flask import Flask, request, send_file, jsonify
+import os
 
 app = Flask(__name__)
-CORS(app)
+PROOFS_DIR = "proofs"
+if not os.path.exists(PROOFS_DIR): os.makedirs(PROOFS_DIR)
 
-# Tắt log để sạch console
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
-
-# Lưu trữ trạng thái: { "123456": { "data": {...}, "image": b'...' } }
-active_sessions = {}
+# Lưu trữ trạng thái của tất cả thiết bị đang chạy
+# Cấu trúc: {"123456": {"is_distracted": False, "session_id": 123, ...}}
+device_registry = {}
 
 @app.route('/update_status', methods=['POST'])
 def update_status():
-    data = request.form.to_dict()
-    code = data.get("code")
-    file = request.files.get('image')
-    
-    status_data = {
-        "is_distracted": data.get("is_distracted") == 'True',
-        "reason": data.get("reason"),
-        "session_id": int(data.get("session_id", 0)),
-        "timestamp": data.get("timestamp")
+    code = request.form.get('code')
+    is_distracted = request.form.get('is_distracted') == 'True'
+    reason = request.form.get('reason', '')
+    session_id = int(request.form.get('session_id', 0))
+    timestamp = request.form.get('timestamp', '')
+
+    # Lưu trạng thái riêng cho mã code này
+    device_registry[code] = {
+        "is_distracted": is_distracted,
+        "reason": reason,
+        "session_id": session_id,
+        "timestamp": timestamp
     }
-    
-    if code not in active_sessions:
-        active_sessions[code] = {}
-    
-    active_sessions[code]["data"] = status_data
-    if file:
-        active_sessions[code]["image"] = file.read()
-    
-    return jsonify({"status": "ok"})
 
-@app.route('/status/<code>')
+    # Lưu ảnh riêng theo code: proof_123456.jpg
+    if 'image' in request.files:
+        file = request.files['image']
+        file.save(os.path.join(PROOFS_DIR, f"proof_{code}.jpg"))
+
+    return jsonify({"status": "success"})
+
+@app.route('/status/<code>', methods=['GET'])
 def get_status(code):
-    session = active_sessions.get(code)
-    if session and "data" in session:
-        return jsonify(session["data"])
-    return jsonify({"reason": "Stopped", "session_id": 0}), 404
+    # Chỉ trả về dữ liệu của đúng mã code yêu cầu
+    status = device_registry.get(code, {"session_id": 0, "is_distracted": False})
+    return jsonify(status)
 
-@app.route('/proof/<code>')
+@app.route('/proof/<code>', methods=['GET'])
 def get_proof(code):
-    session = active_sessions.get(code)
-    if session and "image" in session:
-        return send_file(io.BytesIO(session["image"]), mimetype='image/jpeg', max_age=0)
-    return "No image", 404
+    # Chỉ trả về ảnh của đúng mã code yêu cầu
+    path = os.path.join(PROOFS_DIR, f"proof_{code}.jpg")
+    if os.path.exists(path):
+        return send_file(path, mimetype='image/jpeg')
+    return "Not Found", 404
 
 if __name__ == '__main__':
-    print("🚀 Multi-user Server running on port 5000")
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)
