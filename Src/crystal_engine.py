@@ -1,3 +1,4 @@
+import sys
 import numpy as np # type: ignore
 import os
 import re
@@ -5,21 +6,25 @@ import pickle
 import cv2 # type: ignore
 from collections import defaultdict
 
+def resource_path(relative_path):
+    """ Hàm bổ trợ để tìm đường dẫn tài nguyên khi đóng gói """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 class CrystalEngine:
     def __init__(self):
         self.vertices = {} 
-        self.edges = {}
-        self.domain_vectors = {}
-        self.image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.jfif'}
-        # Load bộ nhận diện một lần duy nhất khi khởi tạo
-        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        self.eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+        # CỐ ĐỊNH ĐƯỜNG DẪN CASCADES ĐỂ KHÔNG BỊ LỖI KHI ĐÓNG GÓI
+        face_path = resource_path("cascades/haarcascade_frontalface_default.xml")
+        eye_path = resource_path("cascades/haarcascade_eye.xml")
+        
+        self.face_cascade = cv2.CascadeClassifier(face_path)
+        self.eye_cascade = cv2.CascadeClassifier(eye_path)
 
     def _extract_features(self, img_input):
-        """
-        img_input: Có thể là đường dẫn file (string) hoặc mảng numpy (frame)
-        """
-        # Kiểm tra nếu đầu vào là đường dẫn thì mới đọc file
         if isinstance(img_input, str):
             img = cv2.imread(img_input)
         else:
@@ -28,28 +33,22 @@ class CrystalEngine:
         if img is None or img.size == 0:
             return []
 
-        # Chuyển xám để xử lý AI
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Nhận diện mặt với tham số minSize để tránh lỗi scaleIdx
+        # Sử dụng detectMultiScale an toàn
         faces = self.face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80))
         
         tags = ["visual_input"]
         if len(faces) > 0:
             tags.append("face_found")
             for (x, y, w, h) in faces:
-                # Cắt vùng khuôn mặt để tìm mắt (giảm tải tính toán)
                 roi_gray = gray[y:y+h, x:x+w]
-                # Nhận diện mắt với độ chính xác cao hơn
                 eyes = self.eye_cascade.detectMultiScale(roi_gray, 1.1, 10, minSize=(20, 20))
-                
                 if len(eyes) >= 2:
                     tags.append("eyes_open")
                 else:
                     tags.append("eyes_closed_or_distracted")
         else:
             tags.append("no_human_visible")
-            
         return tags
     
     def process_training(self, data_path, progress_callback):

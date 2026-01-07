@@ -1,0 +1,3 @@
+([('GreenAI',
+   '/Users/nguyentu/Desktop/work/FocusAI/Server/dist/GreenAI',
+   'EXECUTABLE')],)
