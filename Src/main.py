@@ -72,8 +72,9 @@ class FullScreenMonitorApp:
         def _bg_send():
             data = {
                 "code": self.my_code,
-                "is_distracted": "True" if is_bad else "False",  # type: ignore
+                "is_distracted": "True" if is_bad else "False",
                 "reason": reason,
+                "session_id": session_id, # Added this
                 "timestamp": datetime.now().strftime("%H:%M:%S")
             }
             
@@ -83,7 +84,6 @@ class FullScreenMonitorApp:
                 files = {'image': ('image.jpg', img_encoded.tobytes(), 'image/jpeg')}
 
             try:
-                # Use a timeout so the app doesn't freeze if Render is sleeping
                 requests.post(f"{SERVER_URL}/update_status", data=data, files=files, timeout=5)
             except Exception as e:
                 print(f"Network Error: {e}")
@@ -96,7 +96,7 @@ class FullScreenMonitorApp:
             if not self.cap.isOpened(): return
             self.running = True
             self.start_timestamp = time.time()
-            self.current_session_id = int(time.time())
+            self.current_session_id = int(time.time()) # Unique ID for this session
             self.btn_toggle.config(text="STOP MONITORING", bg="#991b1b")
             self.send_to_server(False, "Focusing", self.current_session_id)
             self.update_loop()
@@ -106,11 +106,8 @@ class FullScreenMonitorApp:
     def stop_session(self):
         self.running = False
         self.btn_toggle.config(text="START MONITORING", bg="#059669")
-        if self.cap:
-            self.cap.release()
-            self.cap = None
-        self.lbl_video.config(image="")
-        self.send_to_server(False, "Stopped", 0)
+        if self.cap: self.cap.release()
+        self.send_to_server(False, "Stopped", 0) # session_id 0 tells mobile to go IDLE
 
     def on_closing(self):
         self.stop_session()
