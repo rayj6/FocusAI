@@ -11,7 +11,7 @@ from datetime import datetime
 from PIL import Image, ImageTk # type: ignore
 from crystal_engine import CrystalEngine
 
-SERVER_URL = "http://172.20.10.3:5000" 
+SERVER_URL = "https://focusai-18m3.onrender.com" 
 
 def resource_path(relative_path):
     try:

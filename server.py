@@ -1,9 +1,9 @@
 from flask import Flask, request, send_file, jsonify # type: ignore
-from flask_cors import CORS # type: ignore
+from flask_cors import CORS
 import os
 
 app = Flask(__name__)
-CORS(app) # Cho phép app mobile truy cập
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 PROOFS_DIR = "proofs"
 if not os.path.exists(PROOFS_DIR): os.makedirs(PROOFS_DIR)
