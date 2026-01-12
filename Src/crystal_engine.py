@@ -7,22 +7,30 @@ import cv2 # type: ignore
 from collections import defaultdict
 
 def resource_path(relative_path):
-    """ Hàm bổ trợ để tìm đường dẫn tài nguyên khi đóng gói """
+    """ Finds the path relative to the script location, not the terminal CWD """
     try:
+        # Check if running as a PyInstaller bundle
         base_path = sys._MEIPASS
     except Exception:
-        base_path = os.path.abspath(".")
+        # Always find relative to the file itself
+        base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
 class CrystalEngine:
     def __init__(self):
         self.vertices = {} 
-        # CỐ ĐỊNH ĐƯỜNG DẪN CASCADES ĐỂ KHÔNG BỊ LỖI KHI ĐÓNG GÓI
+        # Fixed paths using absolute location of this script
         face_path = resource_path("cascades/haarcascade_frontalface_default.xml")
         eye_path = resource_path("cascades/haarcascade_eye.xml")
         
         self.face_cascade = cv2.CascadeClassifier(face_path)
         self.eye_cascade = cv2.CascadeClassifier(eye_path)
+
+        # Safety Check: Print error if files failed to load
+        if self.face_cascade.empty():
+            print(f"ERROR: Could not load face cascade at: {face_path}")
+        if self.eye_cascade.empty():
+            print(f"ERROR: Could not load eye cascade at: {eye_path}")
 
     def _extract_features(self, img_input):
         if isinstance(img_input, str):
@@ -34,7 +42,11 @@ class CrystalEngine:
             return []
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # Sử dụng detectMultiScale an toàn
+        
+        # Ensure classifier is loaded before using it
+        if self.face_cascade.empty():
+            return ["no_human_visible"]
+
         faces = self.face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80))
         
         tags = ["visual_input"]
@@ -50,7 +62,6 @@ class CrystalEngine:
         else:
             tags.append("no_human_visible")
         return tags
-    
     def process_training(self, data_path, progress_callback):
         all_files = [f for f in os.listdir(data_path)]
         for index, filename in enumerate(all_files):

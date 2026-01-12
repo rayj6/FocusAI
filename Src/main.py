@@ -1,14 +1,14 @@
-import cv2 # type: ignore
+import cv2
 import pickle
 import os
 import time
 import threading
 import random
-import requests # type: ignore
+import requests
 import tkinter as tk
 import sys
 from datetime import datetime
-from PIL import Image, ImageTk # type: ignore
+from PIL import Image, ImageTk
 from crystal_engine import CrystalEngine
 
 SERVER_URL = "https://focusai-18m3.onrender.com" 
@@ -17,7 +17,7 @@ def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
     except Exception:
-        base_path = os.path.abspath(".")
+        base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
 class FullScreenMonitorApp:
@@ -34,19 +34,10 @@ class FullScreenMonitorApp:
         self.current_session_id = 0
         self.start_timestamp = 0
         self.distract_counter = 0
+        self.last_send_time = 0  # FIX: Prevent network spamming
         self.cap = None
 
-        try:
-            brain_path = resource_path("Brain/crystal_brain.pb")
-            with open(brain_path, 'rb') as f:
-                data = pickle.load(f)
-                self.vertices = data['vertices']
-        except Exception as e:
-            print(f"Lỗi load Brain: {e}")
-            self.vertices = {}
-
         self.setup_ui()
-        self.send_to_server(False, "Stopped", 0)
         self.window.bind("<Escape>", lambda e: self.on_closing())
 
     def setup_ui(self):
@@ -70,7 +61,6 @@ class FullScreenMonitorApp:
 
     def send_to_server(self, is_bad, reason, session_id, frame=None):
         def _bg_send():
-            # Force the status to be a string the server understands
             status_str = "True" if is_bad else "False"
             data = {
                 "code": self.my_code,
@@ -80,15 +70,18 @@ class FullScreenMonitorApp:
                 "timestamp": datetime.now().strftime("%H:%M:%S")
             }
             files = {}
-            if frame is not None:
-                _, img_encoded = cv2.imencode('.jpg', frame)
+            if frame is not None and is_bad:
+                # Resize image to make upload faster and prevent timeouts
+                small_frame = cv2.resize(frame, (640, 360))
+                _, img_encoded = cv2.imencode('.jpg', small_frame)
                 files = {'image': ('image.jpg', img_encoded.tobytes(), 'image/jpeg')}
             
             try:
-                requests.post(f"{SERVER_URL}/update_status", data=data, files=files, timeout=5)
-                print(f"Sent to server: {reason} | Distracted: {status_str}")
+                # Increased timeout for Render Free Tier
+                requests.post(f"{SERVER_URL}/update_status", data=data, files=files, timeout=10)
+                print(f"Network: {reason} updated successfully.")
             except Exception as e:
-                print(f"Network Error: {e}")
+                print(f"Network Busy/Error: {e}")
 
         threading.Thread(target=_bg_send, daemon=True).start()
 
@@ -98,16 +91,20 @@ class FullScreenMonitorApp:
             tags = self.engine._extract_features(frame)
             is_bad = any(t in ["eyes_closed_or_distracted", "no_human_visible"] for t in tags)
             
+            now = time.time()
             if is_bad:
                 self.distract_counter += 1
-                # FIX: Change == 6 to >= 6 and send every few frames
+                # Trigger server after 2 seconds of distraction
                 if self.distract_counter >= 6:
-                    if self.distract_counter % 5 == 0: # Sync every ~1 second
+                    # Only send if 3 seconds have passed since last update
+                    if now - self.last_send_time > 3:
+                        self.last_send_time = now
                         self.send_to_server(True, "Distracted", self.current_session_id, frame)
             else:
                 if self.distract_counter >= 6:
-                    # Tell the server we are back to work
+                    # Reset status on server when user returns
                     self.send_to_server(False, "Focusing", self.current_session_id)
+                    self.last_send_time = now
                 self.distract_counter = 0
         finally:
             self.is_processing_ai = False
@@ -118,7 +115,7 @@ class FullScreenMonitorApp:
             if not self.cap.isOpened(): return
             self.running = True
             self.start_timestamp = time.time()
-            self.current_session_id = int(time.time()) # Unique ID for this session
+            self.current_session_id = int(time.time())
             self.btn_toggle.config(text="STOP MONITORING", bg="#991b1b")
             self.send_to_server(False, "Focusing", self.current_session_id)
             self.update_loop()
@@ -129,7 +126,7 @@ class FullScreenMonitorApp:
         self.running = False
         self.btn_toggle.config(text="START MONITORING", bg="#059669")
         if self.cap: self.cap.release()
-        self.send_to_server(False, "Stopped", 0) # session_id 0 tells mobile to go IDLE
+        self.send_to_server(False, "Stopped", 0)
 
     def on_closing(self):
         self.stop_session()
@@ -150,24 +147,6 @@ class FullScreenMonitorApp:
                 self.lbl_video.imgtk = imgtk
                 self.lbl_video.configure(image=imgtk)
             self.window.after(35, self.update_loop)
-
-    def check_ai(self, frame):
-        self.is_processing_ai = True
-        try:
-            tags = self.engine._extract_features(frame)
-            # Logic: Nếu không thấy người hoặc mắt nhắm/lệch hướng
-            is_bad = any(t in ["eyes_closed_or_distracted", "no_human_visible"] for t in tags)
-            
-            if is_bad:
-                self.distract_counter += 1
-                if self.distract_counter == 6: # Cảnh báo sau ~2 giây xao nhãng
-                    self.send_to_server(True, "Distracted", self.current_session_id, frame)
-            else:
-                if self.distract_counter >= 6:
-                    self.send_to_server(False, "Focusing", self.current_session_id)
-                self.distract_counter = 0
-        finally:
-            self.is_processing_ai = False
 
 if __name__ == "__main__":
     root = tk.Tk()
