@@ -68,24 +68,25 @@ class FullScreenMonitorApp:
         self.btn_toggle.pack(side="bottom", pady=60)
         self.btn_toggle.bind("<Button-1>", lambda e: self.toggle_session())
 
-    def send_to_server(self, is_distracted, reason, session_id, frame=None):
+    def send_to_server(self, is_bad, reason, session_id, frame=None):
         def _bg_send():
             data = {
                 "code": self.my_code,
-                "is_distracted": str(is_distracted),
+                "is_distracted": "True" if is_bad else "False",  # type: ignore
                 "reason": reason,
-                "session_id": str(session_id),
-                "timestamp": datetime.now().strftime("%H:%M:%S") if is_distracted else ""
+                "timestamp": datetime.now().strftime("%H:%M:%S")
             }
+            
             files = {}
             if frame is not None:
-                # Nén ảnh để gửi nhanh hơn
-                _, img_encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-                files = {'image': (f'proof_{self.my_code}.jpg', img_encoded.tobytes(), 'image/jpeg')}
-            
+                _, img_encoded = cv2.imencode('.jpg', frame)
+                files = {'image': ('image.jpg', img_encoded.tobytes(), 'image/jpeg')}
+
             try:
-                requests.post(f"{SERVER_URL}/update_status", data=data, files=files, timeout=2)
-            except: pass
+                # Use a timeout so the app doesn't freeze if Render is sleeping
+                requests.post(f"{SERVER_URL}/update_status", data=data, files=files, timeout=5)
+            except Exception as e:
+                print(f"Network Error: {e}")
         
         threading.Thread(target=_bg_send, daemon=True).start()
 
