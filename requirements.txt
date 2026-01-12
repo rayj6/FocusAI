@@ -4,3 +4,4 @@ eel
 flask
 flask-cors
 requests
+gunicorn
