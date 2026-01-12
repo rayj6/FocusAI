@@ -1,14 +1,14 @@
-import cv2
+import cv2 # type: ignore
 import pickle
 import os
 import time
 import threading
 import random
-import requests
+import requests # type: ignore
 import tkinter as tk
 import sys
 from datetime import datetime
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk # type: ignore
 from crystal_engine import CrystalEngine
 
 SERVER_URL = "http://172.20.10.3:5000" 

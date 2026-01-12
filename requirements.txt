@@ -1,0 +1,6 @@
+numpy
+opencv-python
+eel
+flask
+flask-cors
+requests
