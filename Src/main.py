@@ -70,25 +70,46 @@ class FullScreenMonitorApp:
 
     def send_to_server(self, is_bad, reason, session_id, frame=None):
         def _bg_send():
+            # Force the status to be a string the server understands
+            status_str = "True" if is_bad else "False"
             data = {
                 "code": self.my_code,
-                "is_distracted": "True" if is_bad else "False",
+                "is_distracted": status_str,
                 "reason": reason,
-                "session_id": session_id, # Added this
+                "session_id": session_id,
                 "timestamp": datetime.now().strftime("%H:%M:%S")
             }
-            
             files = {}
             if frame is not None:
                 _, img_encoded = cv2.imencode('.jpg', frame)
                 files = {'image': ('image.jpg', img_encoded.tobytes(), 'image/jpeg')}
-
+            
             try:
                 requests.post(f"{SERVER_URL}/update_status", data=data, files=files, timeout=5)
+                print(f"Sent to server: {reason} | Distracted: {status_str}")
             except Exception as e:
                 print(f"Network Error: {e}")
-        
+
         threading.Thread(target=_bg_send, daemon=True).start()
+
+    def check_ai(self, frame):
+        self.is_processing_ai = True
+        try:
+            tags = self.engine._extract_features(frame)
+            is_bad = any(t in ["eyes_closed_or_distracted", "no_human_visible"] for t in tags)
+            
+            if is_bad:
+                self.distract_counter += 1
+                # If we just hit the threshold, send "Distracted"
+                if self.distract_counter == 6:
+                    self.send_to_server(True, "Distracted", self.current_session_id, frame)
+            else:
+                # If we were distracted but now we are focusing, send "Focusing"
+                if self.distract_counter >= 6:
+                    self.send_to_server(False, "Focusing", self.current_session_id)
+                self.distract_counter = 0
+        finally:
+            self.is_processing_ai = False
 
     def toggle_session(self):
         if not self.running:
