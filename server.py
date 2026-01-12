@@ -12,14 +12,18 @@ if not os.path.exists(PROOFS_DIR):
 # device_registry stores the state for each pairing code
 device_registry = {}
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROOFS_DIR = os.path.join(BASE_DIR, "proofs")
+
+if not os.path.exists(PROOFS_DIR): 
+    os.makedirs(PROOFS_DIR)
+
 @app.route('/update_status', methods=['POST'])
 def update_status():
     code = request.form.get('code')
-    # Handle various boolean formats (True, true, 1)
-    raw_distracted = str(request.form.get('is_distracted', 'False')).lower()
-    is_distracted = raw_distracted in ['true', '1', 'yes']
+    # Better boolean handling
+    is_distracted = str(request.form.get('is_distracted', 'False')).lower() in ['true', '1']
     
-    # Critical: Store session_id so the mobile app knows a session is active
     device_registry[code] = {
         "is_distracted": is_distracted,
         "reason": request.form.get('reason', 'Focusing'),
@@ -27,11 +31,10 @@ def update_status():
         "session_id": int(request.form.get('session_id', 0))
     }
     
-    if 'image' in request.files:
+    if 'image' in request.files and is_distracted:
         file = request.files['image']
         file.save(os.path.join(PROOFS_DIR, f"proof_{code}.jpg"))
         
-    print(f"Update for {code}: Distracted={is_distracted}, Session={device_registry[code]['session_id']}")
     return jsonify({"status": "success"})
 
 @app.route('/status/<code>', methods=['GET'])

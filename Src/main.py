@@ -100,12 +100,13 @@ class FullScreenMonitorApp:
             
             if is_bad:
                 self.distract_counter += 1
-                # If we just hit the threshold, send "Distracted"
-                if self.distract_counter == 6:
-                    self.send_to_server(True, "Distracted", self.current_session_id, frame)
-            else:
-                # If we were distracted but now we are focusing, send "Focusing"
+                # FIX: Change == 6 to >= 6 and send every few frames
                 if self.distract_counter >= 6:
+                    if self.distract_counter % 5 == 0: # Sync every ~1 second
+                        self.send_to_server(True, "Distracted", self.current_session_id, frame)
+            else:
+                if self.distract_counter >= 6:
+                    # Tell the server we are back to work
                     self.send_to_server(False, "Focusing", self.current_session_id)
                 self.distract_counter = 0
         finally:
