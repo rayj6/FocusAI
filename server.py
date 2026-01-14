@@ -86,27 +86,52 @@ def send_license_email(to_email, key, tier):
         return False
 
 def check_payment_via_sepay(transaction_note):
-    """Truy vấn trực tiếp API SePay để đối soát giao dịch"""
+    """
+    Truy vấn API SePay (userapi) để đối soát giao dịch dựa trên nội dung chuyển khoản.
+    """
+    # Cập nhật endpoint đúng theo tài liệu mới nhất
+    SEPAY_API_URL_NEW = "https://my.sepay.vn/userapi/transactions/list"
+    
+    api_key = SEPAY_API_KEY
+    if not api_key.startswith("Bearer "):
+        api_key = f"Bearer {api_key}"
+
     headers = {
-        "Authorization": SEPAY_API_KEY, 
+        "Authorization": api_key,
         "Content-Type": "application/json"
     }
+
     try:
-        # Lấy 20 giao dịch gần nhất từ SePay API
-        response = requests.get(SEPAY_API_URL, headers=headers, params={"limit": 20})
+        # Lấy 50 giao dịch gần nhất
+        response = requests.get(SEPAY_API_URL_NEW, headers=headers, params={"limit": 50})
+        
         if response.status_code == 200:
             data = response.json()
             transactions = data.get("transactions", [])
+            
+            # Chuẩn hóa mã cần tìm (Viết hoa, xóa khoảng trắng thừa)
+            search_code = str(transaction_note).strip().upper()
+            
             for tx in transactions:
-                # Tìm mã ghi chú GF-XXXX trong nội dung chuyển khoản
-                if transaction_note in str(tx.get("content", "")):
+                # SePay sử dụng 'transaction_content' cho nội dung chuyển khoản
+                content = str(tx.get("transaction_content", "")).upper()
+                
+                # Sử dụng toán tử 'in' để tìm mã trong chuỗi dài của ngân hàng (MBVCB.125...)
+                if search_code in content:
+                    print(f"✅ Khớp giao dịch: {search_code}")
                     return {
-                        "amount": tx.get("transfer_amount"),
-                        "bank_ref": tx.get("transaction_id")
+                        # Tiền vào được lưu trong trường 'amount_in'
+                        "amount": float(tx.get("amount_in", 0)), 
+                        "bank_ref": tx.get("id"),
+                        "paid_at": tx.get("transaction_date")
                     }
+        else:
+            print(f"❌ SePay API Error: {response.status_code}")
     except Exception as e:
-        print(f"SePay API Connection Error: {e}")
+        print(f"❌ SePay Connection Error: {e}")
+        
     return None
+
 
 # --- ADMIN DASHBOARD API ---
 
@@ -179,44 +204,58 @@ def confirm():
 
 @app.route('/check_payment_status', methods=['POST'])
 def check_status():
-    # CORS headers are handled by the extension, but we return immediately 
-    # if the payment isn't there yet so the browser doesn't block.
+    """
+    API để Frontend gọi kiểm tra trạng thái thanh toán.
+    Hàm này sẽ gọi SePay để đối soát và cập nhật Firebase nếu thành công.
+    """
     data = request.json
     note = data.get('transaction_note')
-    REQUIRED_AMOUNT = 2000
+    REQUIRED_AMOUNT = 2000  # Ngưỡng thanh toán tối thiểu
     
     if not note:
         return jsonify({"error": "Note required"}), 400
 
-    # CHECK ONCE ONLY - DO NOT SLEEP
+    # Thực hiện đối soát với SePay
     payment_info = check_payment_via_sepay(note)
     
     if payment_info:
-        amount_paid = float(payment_info['amount'])
+        amount_paid = payment_info['amount']
         ref = db.reference(f'transactions/{note}')
         tx = ref.get()
         
         if not tx:
-            return jsonify({"error": "Data missing"}), 404
+            return jsonify({"error": "Transaction not found in system"}), 404
 
+        # Trường hợp 1: Đủ tiền
         if amount_paid >= REQUIRED_AMOUNT:
             if tx.get('status') == 'pending':
                 ref.update({
                     "status": "paid",
+                    "bank_ref": payment_info['bank_ref'],
                     "amount_received": amount_paid,
-                    "paid_at": datetime.now().isoformat()
+                    "paid_at": payment_info['paid_at'] or datetime.now().isoformat()
                 })
+                # Gửi Email chứa License Key cho khách hàng
                 send_license_email(tx['email'], tx['license_key'], tx['tier'])
             
-            return jsonify({"status": "success", "license_key": tx['license_key']})
+            return jsonify({
+                "status": "success", 
+                "license_key": tx['license_key'],
+                "tier": tx['tier']
+            })
+
+        # Trường hợp 2: Thiếu tiền
         else:
             return jsonify({
                 "status": "failed",
+                "reason": "Insufficient amount",
                 "required_amount": REQUIRED_AMOUNT,
-                "paid_amount": amount_paid
-            })
-
-    # If no payment found, return immediately so CORS doesn't time out
+                "paid_amount": amount_paid,
+                "license_key": tx['license_key'],
+                "note": note
+            }), 200
+            
+    # Trường hợp chưa thấy giao dịch
     return jsonify({"status": "not_found_yet"}), 200
 
 @app.route('/verify_license', methods=['POST'])
