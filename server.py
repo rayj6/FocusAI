@@ -179,57 +179,45 @@ def confirm():
 
 @app.route('/check_payment_status', methods=['POST'])
 def check_status():
+    # CORS headers are handled by the extension, but we return immediately 
+    # if the payment isn't there yet so the browser doesn't block.
     data = request.json
     note = data.get('transaction_note')
-    REQUIRED_AMOUNT = 2000  # Ngưỡng tối thiểu
+    REQUIRED_AMOUNT = 2000
     
     if not note:
         return jsonify({"error": "Note required"}), 400
 
-    # LONG POLLING: Server tự đợi và kiểm tra trong 60 giây
-    # Điều này giúp Frontend chỉ cần gửi 1 lần duy nhất
-    max_retries = 12  # 12 lần * 5 giây = 60 giây
-    for i in range(max_retries):
-        payment_info = check_payment_via_sepay(note)
+    # CHECK ONCE ONLY - DO NOT SLEEP
+    payment_info = check_payment_via_sepay(note)
+    
+    if payment_info:
+        amount_paid = float(payment_info['amount'])
+        ref = db.reference(f'transactions/{note}')
+        tx = ref.get()
         
-        if payment_info:
-            amount_paid = float(payment_info['amount'])
-            ref = db.reference(f'transactions/{note}')
-            tx = ref.get()
+        if not tx:
+            return jsonify({"error": "Data missing"}), 404
+
+        if amount_paid >= REQUIRED_AMOUNT:
+            if tx.get('status') == 'pending':
+                ref.update({
+                    "status": "paid",
+                    "amount_received": amount_paid,
+                    "paid_at": datetime.now().isoformat()
+                })
+                send_license_email(tx['email'], tx['license_key'], tx['tier'])
             
-            if not tx:
-                return jsonify({"error": "Data missing in Firebase"}), 404
+            return jsonify({"status": "success", "license_key": tx['license_key']})
+        else:
+            return jsonify({
+                "status": "failed",
+                "required_amount": REQUIRED_AMOUNT,
+                "paid_amount": amount_paid
+            })
 
-            # TH 1: Đủ tiền
-            if amount_paid >= REQUIRED_AMOUNT:
-                if tx.get('status') == 'pending':
-                    ref.update({
-                        "status": "paid",
-                        "amount_received": amount_paid,
-                        "paid_at": datetime.now().isoformat()
-                    })
-                    # Gửi email ngay
-                    send_license_email(tx['email'], tx['license_key'], tx['tier'])
-                
-                return jsonify({
-                    "status": "success", 
-                    "license_key": tx['license_key']
-                })
-
-            # TH 2: Thiếu tiền
-            else:
-                return jsonify({
-                    "status": "failed",
-                    "required_amount": REQUIRED_AMOUNT,
-                    "paid_amount": amount_paid,
-                    "note": note
-                })
-        
-        # Nếu chưa thấy tiền, nghỉ 5 giây rồi kiểm tra tiếp
-        time.sleep(5)
-
-    # Sau 1 phút vẫn không thấy tiền
-    return jsonify({"status": "timeout", "message": "Hệ thống vẫn chưa thấy tiền về. Vui lòng bấm thử lại sau 1-2 phút."})
+    # If no payment found, return immediately so CORS doesn't time out
+    return jsonify({"status": "not_found_yet"}), 200
 
 @app.route('/verify_license', methods=['POST'])
 def verify_license():
