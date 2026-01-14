@@ -107,6 +107,45 @@ def check_payment_via_sepay(transaction_note):
         print(f"SePay API Connection Error: {e}")
     return None
 
+# --- ADMIN DASHBOARD API ---
+
+@app.route('/admin/stats', methods=['GET'])
+def get_admin_stats():
+    """Lấy số liệu thống kê tổng quát cho dashboard"""
+    try:
+        # 1. Tính doanh thu từ Firebase
+        all_tx = db.reference('transactions').get() or {}
+        total_revenue = sum(float(data.get('amount_received', 0)) for data in all_tx.values() if data.get('status') == 'paid')
+        
+        # 2. Đếm số người dùng (dựa trên số lượng transaction/email)
+        total_users = len(set(data.get('email') for data in all_tx.values()))
+        
+        # 3. Trạng thái hệ thống
+        active_rooms = len(device_registry)
+        
+        return jsonify({
+            "total_revenue": total_revenue,
+            "active_users": total_users,
+            "active_rooms": active_rooms,
+            "status": "Stable"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/admin/live-rooms', methods=['GET'])
+def get_live_rooms():
+    """Lấy danh sách chi tiết các thiết bị đang online"""
+    # Chuyển dictionary thành list để dễ hiển thị ở React
+    rooms_list = []
+    for code, info in device_registry.items():
+        rooms_list.append({
+            "code": code,
+            "status": "Distracted" if info.get('is_distracted') else "Focused",
+            "user": "User_" + code[:3], # Placeholder vì code chưa định danh user
+            "is_danger": info.get('is_distracted')
+        })
+    return jsonify(rooms_list)
+
 # --- API ROUTES ---
 
 @app.route('/generate_transaction_note', methods=['GET'])
