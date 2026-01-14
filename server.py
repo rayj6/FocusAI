@@ -3,6 +3,7 @@ import random
 import string
 import json
 import smtplib
+import time
 import requests
 from datetime import datetime
 from email.mime.text import MIMEText
@@ -10,9 +11,9 @@ from email.mime.multipart import MIMEMultipart
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import firebase_admin
-from firebase_admin import credentials, db
-from dotenv import load_dotenv
+import firebase_admin # type: ignore
+from firebase_admin import credentials, db # type: ignore
+from dotenv import load_dotenv # type: ignore
 
 # Tải cấu hình từ .env (cho local) hoặc Environment Variables (cho Render)
 load_dotenv()
@@ -24,7 +25,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 FIREBASE_URL = os.getenv("FIREBASE_DATABASE_URL")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
-SEPAY_API_KEY = os.getenv("SEPAY_API_KEY") # Phải có chữ "Bearer " phía trước
+SEPAY_API_KEY = os.getenv("SEPAY_API_KEY")
 SEPAY_API_URL = "https://my.sepay.vn/api/transactions/list"
 
 # --- KHỞI TẠO FIREBASE (FIXED CHO RENDER SECRETS) ---
@@ -178,38 +179,57 @@ def confirm():
 
 @app.route('/check_payment_status', methods=['POST'])
 def check_status():
-    """Chủ động đối soát với SePay và nâng cấp tài khoản"""
     data = request.json
     note = data.get('transaction_note')
+    REQUIRED_AMOUNT = 2000  # Ngưỡng tối thiểu
     
     if not note:
         return jsonify({"error": "Note required"}), 400
 
-    # 1. Kiểm tra tiền qua API SePay
-    payment_info = check_payment_via_sepay(note)
-    
-    if payment_info:
-        ref = db.reference(f'transactions/{note}')
-        tx = ref.get()
+    # LONG POLLING: Server tự đợi và kiểm tra trong 60 giây
+    # Điều này giúp Frontend chỉ cần gửi 1 lần duy nhất
+    max_retries = 12  # 12 lần * 5 giây = 60 giây
+    for i in range(max_retries):
+        payment_info = check_payment_via_sepay(note)
         
-        # 2. Nếu tìm thấy giao dịch hợp lệ và đang chờ
-        if tx and tx.get('status') == 'pending':
-            ref.update({
-                "status": "paid",
-                "bank_ref": payment_info['bank_ref'],
-                "amount_received": payment_info['amount'],
-                "paid_at": datetime.now().isoformat()
-            })
-            # 3. Gửi Email License ngay lập tức
-            send_license_email(tx['email'], tx['license_key'], tx['tier'])
+        if payment_info:
+            amount_paid = float(payment_info['amount'])
+            ref = db.reference(f'transactions/{note}')
+            tx = ref.get()
             
-            return jsonify({
-                "status": "success", 
-                "license_key": tx['license_key'],
-                "tier": tx['tier']
-            })
-            
-    return jsonify({"status": "not_found_yet"}), 200
+            if not tx:
+                return jsonify({"error": "Data missing in Firebase"}), 404
+
+            # TH 1: Đủ tiền
+            if amount_paid >= REQUIRED_AMOUNT:
+                if tx.get('status') == 'pending':
+                    ref.update({
+                        "status": "paid",
+                        "amount_received": amount_paid,
+                        "paid_at": datetime.now().isoformat()
+                    })
+                    # Gửi email ngay
+                    send_license_email(tx['email'], tx['license_key'], tx['tier'])
+                
+                return jsonify({
+                    "status": "success", 
+                    "license_key": tx['license_key']
+                })
+
+            # TH 2: Thiếu tiền
+            else:
+                return jsonify({
+                    "status": "failed",
+                    "required_amount": REQUIRED_AMOUNT,
+                    "paid_amount": amount_paid,
+                    "note": note
+                })
+        
+        # Nếu chưa thấy tiền, nghỉ 5 giây rồi kiểm tra tiếp
+        time.sleep(5)
+
+    # Sau 1 phút vẫn không thấy tiền
+    return jsonify({"status": "timeout", "message": "Hệ thống vẫn chưa thấy tiền về. Vui lòng bấm thử lại sau 1-2 phút."})
 
 @app.route('/verify_license', methods=['POST'])
 def verify_license():
