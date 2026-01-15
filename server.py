@@ -110,16 +110,18 @@ def check_payment_via_sepay(transaction_note):
             
             # CHUẨN HÓA MÃ TÌM KIẾM: Thay thế '-' bằng ' ' (khoảng trắng)
             # Ví dụ: 'GFOCUS-PRO-Z1XS4J' -> 'GFOCUS PRO Z1XS4J'
-            search_code = str(transaction_note).replace("-", " ").strip().upper()
-            print(f"🔍 Đang tìm kiếm mã (đã đổi định dạng): {search_code}")
+            search_target = str(transaction_note).replace("-", "").replace(" ", "").upper()
+            print(f"Normalized Search Target: {search_target}")
             
             for tx in transactions:
-                # Lấy nội dung gốc từ ngân hàng
-                content = str(tx.get("transaction_content", "")).upper()
+                # 2. Get bank content and clean it too
+                # "MBVCB.123.GFOCUS PRO Z1XS4J" -> "MBVCB123GFOCUSPROZ1XS4J"
+                content_raw = str(tx.get("transaction_content", "")).upper()
+                content_clean = content_raw.replace("-", "").replace(" ", "").replace(".", "")
                 
-                # So sánh trực tiếp: nếu mã 'GFOCUS PRO Z1XS4J' nằm trong nội dung ngân hàng
-                if search_code in content:
-                    print(f"✅ Đã tìm thấy giao dịch khớp: {search_code}")
+                # 3. Check if your cleaned code exists anywhere in the cleaned bank text
+                if search_target in content_clean:
+                    print(f"✅ Match Found: {content_raw}")
                     return {
                         "amount": float(tx.get("amount_in", 0)), 
                         "bank_ref": tx.get("id"),
