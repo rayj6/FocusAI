@@ -61,7 +61,7 @@ def send_license_email(to_email, key, tier):
     msg = MIMEMultipart()
     msg['From'] = f"GFocus Team <{SENDER_EMAIL}>"
     msg['To'] = to_email
-    msg['Subject'] = f"🔑 Your GFocus {tier} License Key"
+    msg['Subject'] = f"Your GFocus {tier} License Key"
     
     body = f"""
     Chào bạn, thanh toán của bạn đã được xác nhận thành công!
