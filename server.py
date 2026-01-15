@@ -212,7 +212,7 @@ def check_status():
     """
     data = request.json
     note = data.get('transaction_note')
-    REQUIRED_AMOUNT = 2000  # Ngưỡng thanh toán tối thiểu
+    REQUIRED_AMOUNT = 315000  # Ngưỡng thanh toán tối thiểu
     
     if not note:
         return jsonify({"error": "Note required"}), 400
