@@ -87,9 +87,9 @@ def send_license_email(to_email, key, tier):
 
 def check_payment_via_sepay(transaction_note):
     """
-    Truy vấn API SePay (userapi) để đối soát giao dịch dựa trên nội dung chuyển khoản.
+    Truy vấn API SePay và đối soát giao dịch.
+    Tự động chuyển đổi GFOCUS-PRO-XXXX thành GFOCUS PRO XXXX để khớp với ngân hàng.
     """
-    # Cập nhật endpoint đúng theo tài liệu mới nhất
     SEPAY_API_URL_NEW = "https://my.sepay.vn/userapi/transactions/list"
     
     api_key = SEPAY_API_KEY
@@ -102,36 +102,36 @@ def check_payment_via_sepay(transaction_note):
     }
 
     try:
-        # Lấy 50 giao dịch gần nhất
         response = requests.get(SEPAY_API_URL_NEW, headers=headers, params={"limit": 50})
         
         if response.status_code == 200:
             data = response.json()
             transactions = data.get("transactions", [])
             
-            # Chuẩn hóa mã cần tìm (Viết hoa, xóa khoảng trắng thừa)
-            search_code = str(transaction_note).strip().upper()
+            # CHUẨN HÓA MÃ TÌM KIẾM: Thay thế '-' bằng ' ' (khoảng trắng)
+            # Ví dụ: 'GFOCUS-PRO-Z1XS4J' -> 'GFOCUS PRO Z1XS4J'
+            search_code = str(transaction_note).replace("-", " ").strip().upper()
+            print(f"🔍 Đang tìm kiếm mã (đã đổi định dạng): {search_code}")
             
             for tx in transactions:
-                # SePay sử dụng 'transaction_content' cho nội dung chuyển khoản
+                # Lấy nội dung gốc từ ngân hàng
                 content = str(tx.get("transaction_content", "")).upper()
                 
-                # Sử dụng toán tử 'in' để tìm mã trong chuỗi dài của ngân hàng (MBVCB.125...)
+                # So sánh trực tiếp: nếu mã 'GFOCUS PRO Z1XS4J' nằm trong nội dung ngân hàng
                 if search_code in content:
-                    print(f"✅ Khớp giao dịch: {search_code}")
+                    print(f"✅ Đã tìm thấy giao dịch khớp: {search_code}")
                     return {
-                        # Tiền vào được lưu trong trường 'amount_in'
                         "amount": float(tx.get("amount_in", 0)), 
                         "bank_ref": tx.get("id"),
                         "paid_at": tx.get("transaction_date")
                     }
         else:
             print(f"❌ SePay API Error: {response.status_code}")
+            
     except Exception as e:
         print(f"❌ SePay Connection Error: {e}")
         
     return None
-
 
 # --- ADMIN DASHBOARD API ---
 
