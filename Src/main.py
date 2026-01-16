@@ -12,7 +12,8 @@ from PIL import Image, ImageTk
 from crystal_engine import CrystalEngine
 
 # --- CONFIG & CYBER PALETTE ---
-SERVER_URL = "https://focusai-18m3.onrender.com"
+# SERVER_URL = "https://focusai-18m3.onrender.com"
+SERVER_URL = "http://172.20.10.3:5000"
 BG_MAIN = "#050505"      # OLED Black
 BG_SIDE = "#0F1115"      # Dark Slate Sidebar
 ACCENT_CYAN = "#00F0FF"  # High-tech Cyan
@@ -168,6 +169,8 @@ class FullScreenMonitorApp:
             self.is_processing_ai = False
 
     def send_to_server(self, is_bad, reason, session_id, frame=None):
+        elapsed_seconds = int(time.time() - self.start_timestamp) if self.running else 0
+    
         def _bg_send():
             status_str = "True" if is_bad else "False"
             data = {
@@ -175,12 +178,15 @@ class FullScreenMonitorApp:
                 "is_distracted": status_str,
                 "reason": reason,
                 "session_id": session_id,
+                "seconds": elapsed_seconds,
                 "timestamp": datetime.now().strftime("%H:%M:%S")
             }
             files = {}
             if frame is not None and is_bad:
+                # Resize to make upload faster
                 small_frame = cv2.resize(frame, (640, 360))
                 _, img_encoded = cv2.imencode('.jpg', small_frame)
+                # The key 'image' must match request.files['image'] in server.py
                 files = {'image': ('image.jpg', img_encoded.tobytes(), 'image/jpeg')}
             
             try:
