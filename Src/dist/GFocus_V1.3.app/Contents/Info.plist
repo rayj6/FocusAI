@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>GFocus_V1.3</string>
+	<key>CFBundleExecutable</key>
+	<string>GFocus_V1.3</string>
+	<key>CFBundleIconFile</key>
+	<string>generated-d5a7f5f4a0aec50835e09cb9ebf6fe9ec2ba6ce32f596b96b1bb05ec2478d5c1.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>GFocus_V1.3</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>GFocus_V1.3</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.0.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>
