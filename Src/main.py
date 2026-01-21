@@ -12,7 +12,7 @@ from PIL import Image, ImageTk
 from crystal_engine import CrystalEngine
 
 # --- CONFIG & CYBER PALETTE ---
-SERVER_URL = "https://focusai-18m3.onrender.com"
+SERVER_URL = "https://gfocusapi.scarlet-technology.com/"
 BG_MAIN = "#050505"      # OLED Black
 BG_SIDE = "#0F1115"      # Dark Slate Sidebar
 ACCENT_CYAN = "#00F0FF"  # High-tech Cyan
